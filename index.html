@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zıplayan Kırmızı</title>
+<style>
+  body { margin:0; background:#1d2b53; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; font-family:system-ui,sans-serif; color:#fff; }
+  canvas { background:#7ec8f5; max-width:100%; border:4px solid #fff; }
+  p { margin:8px; font-size:14px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="800" height="400"></canvas>
+<p>Ok tuşları veya A/D: yürü &nbsp;|&nbsp; Boşluk veya yukarı ok: zıpla &nbsp;|&nbsp; Yıldızları topla, bayrağa ulaş!</p>
+<script>
+const c = document.getElementById('c'), ctx = c.getContext('2d');
+const keys = {};
+addEventListener('keydown', e => { keys[e.code] = true; if (['Space','ArrowUp','ArrowDown'].includes(e.code)) e.preventDefault(); });
+addEventListener('keyup', e => keys[e.code] = false);
+
+// Zemin ve platformlar: x, y, genişlik, yükseklik
+const platforms = [
+  [0,350,700,50],[800,350,500,50],[1400,350,700,50],
+  [300,260,120,20],[520,200,120,20],[900,260,120,20],
+  [1100,200,120,20],[1550,260,120,20],[1750,200,120,20]
+];
+const coinsStart = [[360,225],[580,165],[960,225],[1160,165],[1610,225],[1810,165],[1000,320],[1500,320]];
+const enemiesStart = [[500,326,420,680],[1000,326,820,1280],[1600,326,1420,2060]];
+const flag = {x:2000,y:250,w:10,h:100};
+
+let player, coins, enemies, score, camX, won, lives;
+function reset() {
+  player = {x:50,y:300,w:28,h:36,vx:0,vy:0,ground:false};
+  coins = coinsStart.map(a => ({x:a[0],y:a[1],got:false}));
+  enemies = enemiesStart.map(a => ({x:a[0],y:a[1],min:a[2],max:a[3],dir:1}));
+  score = 0; camX = 0; won = false;
+}
+lives = 3; reset();
+
+function hit(a,b){ return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y; }
+
+function update() {
+  if (won) { if (keys.Enter) { lives = 3; reset(); } return; }
+  const left = keys.ArrowLeft || keys.KeyA, right = keys.ArrowRight || keys.KeyD;
+  const jump = keys.Space || keys.ArrowUp || keys.KeyW;
+  player.vx = (right?4:0) - (left?4:0);
+  if (jump && player.ground) { player.vy = -12; player.ground = false; }
+  player.vy += 0.6;
+
+  player.x += player.vx;
+  platforms.forEach(p => {
+    const r = {x:p[0],y:p[1],w:p[2],h:p[3]};
+    if (hit(player,r)) { player.x -= player.vx; }
+  });
+  player.y += player.vy; player.ground = false;
+  platforms.forEach(p => {
+    const r = {x:p[0],y:p[1],w:p[2],h:p[3]};
+    if (hit(player,r)) {
+      if (player.vy > 0) { player.y = r.y - player.h; player.ground = true; }
+      else { player.y = r.y + r.h; }
+      player.vy = 0;
+    }
+  });
+  if (player.x < 0) player.x = 0;
+
+  coins.forEach(k => { if (!k.got && hit(player,{x:k.x-10,y:k.y-10,w:20,h:20})) { k.got = true; score++; } });
+
+  enemies.forEach(e => {
+    e.x += e.dir * 1.5;
+    if (e.x < e.min || e.x > e.max) e.dir *= -1;
+    const r = {x:e.x,y:e.y,w:28,h:24};
+    if (hit(player,r)) {
+      if (player.vy > 0 && player.y + player.h - 12 < r.y) { e.dead = true; player.vy = -9; score += 2; }
+      else die();
+    }
+  });
+  enemies = enemies.filter(e => !e.dead);
+
+  if (player.y > 500) die();
+  if (hit(player, flag)) won = true;
+  camX = Math.max(0, player.x - 300);
+}
+
+function die() {
+  lives--;
+  if (lives <= 0) { lives = 3; score = 0; }
+  const s = score; reset(); score = s;
+}
+
+function draw() {
+  ctx.clearRect(0,0,800,400);
+  ctx.save(); ctx.translate(-camX,0);
+  ctx.fillStyle = '#4caf50';
+  platforms.forEach(p => { ctx.fillStyle='#8b5a2b'; ctx.fillRect(p[0],p[1],p[2],p[3]); ctx.fillStyle='#4caf50'; ctx.fillRect(p[0],p[1],p[2],8); });
+  coins.forEach(k => { if (!k.got) { ctx.fillStyle='#ffd400'; ctx.font='24px sans-serif'; ctx.fillText('★',k.x-12,k.y+8); } });
+  enemies.forEach(e => { ctx.fillStyle='#7b3f00'; ctx.fillRect(e.x,e.y,28,24); ctx.fillStyle='#fff'; ctx.fillRect(e.x+5,e.y+6,6,6); ctx.fillRect(e.x+17,e.y+6,6,6); });
+  ctx.fillStyle='#fff'; ctx.fillRect(flag.x,flag.y,flag.w,flag.h);
+  ctx.fillStyle='#e53935'; ctx.fillRect(flag.x+10,flag.y,40,28);
+  ctx.fillStyle='#e53935'; ctx.fillRect(player.x,player.y,player.w,player.h);
+  ctx.fillStyle='#fff'; ctx.fillRect(player.x+16,player.y+8,8,8);
+  ctx.restore();
+  ctx.fillStyle='#fff'; ctx.font='bold 20px system-ui';
+  ctx.fillText('★ ' + score + '    ♥ ' + lives, 16, 30);
+  if (won) {
+    ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillRect(0,0,800,400);
+    ctx.fillStyle='#fff'; ctx.font='bold 36px system-ui'; ctx.textAlign='center';
+    ctx.fillText('Kazandın! Puan: ' + score, 400, 190);
+    ctx.font='20px system-ui'; ctx.fillText('Tekrar oynamak için Enter', 400, 230);
+    ctx.textAlign='left';
+  }
+}
+(function loop(){ update(); draw(); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>
